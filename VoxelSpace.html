@@ -81,6 +81,30 @@ var map =
     shift:    11,  // power of two: 2^10 = 1024
 };
 
+var getUrlForImage = function(x,y){
+   if(x<0 || y<0){
+     return null;
+   }
+   var e = 4830 + x*10;
+   var n = 54620 - y*10;
+   var file = "CoV_" + e + "E_" + n + "N";
+   var tile_basepath = "//vancouver-heightmaps.s3.amazonaws.com/heightmaps/"
+   return tile_basepath + file + ".png";
+}
+
+function imageToTile(datah) {
+    var tile = {
+        altitude: new Uint16Array(2048*2048), // 1024 * 1024 byte array with height information
+        color:    new Uint32Array(2048*2048) // 1024 * 1024 int array with RGB colors
+    };
+    for(var i=0; i<map.width*map.height; i++) {
+        tile.altitude[i] = datah[(i<<2)+1]*256 + datah[(i<<2)+2];
+        var c = datah[(i<<2)];
+        tile.color[i] = 0xFF000000 | c << 16 | c << 8 | c;
+    }
+    return tile;
+}
+
 var tiles = [];
 
 // ---------------------------------------------
@@ -123,8 +147,6 @@ var timelastframe = new Date().getTime();
 var frames = 0;
 
 function getTile(x, y) {
-    if(x < 0 || y < 0)
-        return null;
     x = x / map.width | 0;
     y = y / map.height | 0;
     if(tiles[y] === undefined)
@@ -138,22 +160,17 @@ function ClearFar() {
   var lowy = (camera.y - camera.distance * 2) / map.height | 0;
   var highx = (camera.x + camera.distance * 2) / map.width | 0;
   var highy = (camera.y + camera.distance * 2) / map.height | 0;
-
-  for(var y = 0; y < lowy; y++)
-    delete tiles[y];
-
-  for(var y = highy+1; y < tiles.length; y++)
-    delete tiles[y];
-
-  for(var y = lowy; y <= highy; y++) {
-    if(tiles[y] === undefined)
-      continue;
-
-    for(var x = 0; x < lowx; x++)
-      delete tiles[y][x];
-    for(var x = highx+1; x < tiles[y].length; x++)
-      delete tiles[y][x];
-  }
+  
+  Object.keys(tiles).map(function(y){return parseInt(y);}).forEach(function(y){
+    if(y < lowy || y > highy){
+      delete tiles[y];
+    }else{
+       Object.keys(tiles[y]).map(function(x){return parseInt(x);}).forEach(
+          function(x){
+            if(x < lowx || x > highx) delete tiles[y][x];
+          });
+    }
+  });
 }
 
 var loading = [];
@@ -170,15 +187,14 @@ function FetchNear() {
       if(tiles[y] && tiles[y][x]) {
         continue;
       }
-      var str = "" + y + "," + x;
-      if(loading.indexOf(str) < 0) {
-        loading.push(str);
-        console.log("loading tile " + str);
+      var url = getUrlForImage(x,y);
+      if(url == null) continue;
+      if(loading.indexOf(url) < 0) {
+        loading.push(url);
+        console.log("loading tile " + url);
 
-        var e = 4830 + x*10;
-        var n = 54620 - y*10;
-        LoadMap(x, y, "CoV_" + e + "E_" + n + "N", function() {
-          var idx = loading.indexOf(str);
+        LoadMap(x, y, url, function() {
+          var idx = loading.indexOf(url);
           loading.splice(idx, 1);
         });
       }
@@ -515,11 +531,10 @@ function DownloadImagesAsync(urls, OnSuccess) {
     });
 }
 
-var tile_basepath = "http://vancouver-heightmaps.s3.amazonaws.com/heightmaps/"
 
-function LoadMap(x, y, file, callback)
+function LoadMap(x, y, url, callback)
 {
-    DownloadImagesAsync([tile_basepath + file + ".png"], function(images) {
+    DownloadImagesAsync([url], function(images) {
         console.log("loaded " + x + ", " + y)
         if(!tiles[y])
             tiles[y] = [];
@@ -531,18 +546,6 @@ function LoadMap(x, y, file, callback)
     });
 }
 
-function imageToTile(datah) {
-    var tile = {
-        altitude: new Uint16Array(2048*2048), // 1024 * 1024 byte array with height information
-        color:    new Uint32Array(2048*2048) // 1024 * 1024 int array with RGB colors
-    };
-    for(var i=0; i<map.width*map.height; i++) {
-        tile.altitude[i] = datah[(i<<2)+1]*256 + datah[(i<<2)+2];
-        var c = datah[(i<<2)];
-        tile.color[i] = 0xFF000000 | c << 16 | c << 8 | c;
-    }
-    return tile;
-}
 
 function OnResizeWindow()
 {
