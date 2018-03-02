@@ -81,7 +81,10 @@ var map =
     shift:    11,  // power of two: 2^10 = 1024
 };
 
-var getUrlForImage = function(x,y){
+/*
+ * Return zero, one or more image urls for the given position
+ */
+var getUrlsForImage = function(x,y){
    if(x<0 || y<0){
      return null;
    }
@@ -92,7 +95,8 @@ var getUrlForImage = function(x,y){
    return tile_basepath + file + ".png";
 }
 
-function imageToTile(datah) {
+function imagesToTile(images) {
+    var datah = images[0];
     var tile = {
         altitude: new Uint16Array(2048*2048), // 1024 * 1024 byte array with height information
         color:    new Uint32Array(2048*2048) // 1024 * 1024 int array with RGB colors
@@ -187,14 +191,15 @@ function FetchNear() {
       if(tiles[y] && tiles[y][x]) {
         continue;
       }
-      var url = getUrlForImage(x,y);
-      if(url == null) continue;
-      if(loading.indexOf(url) < 0) {
-        loading.push(url);
-        console.log("loading tile " + url);
+      var urls = getUrlsForImage(x,y);
+      urls = urls ? Array.isArray(urls)? urls : [urls] : null;
+      if(urls == null || urls.length == 0) continue;
+      if(loading.indexOf(urls[0]) < 0) {
+        loading.push(urls[0]);
+        console.log("loading tile " + urls);
 
-        LoadMap(x, y, url, function() {
-          var idx = loading.indexOf(url);
+        LoadMap(x, y, urls, function() {
+          var idx = loading.indexOf(urls[0]);
           loading.splice(idx, 1);
         });
       }
@@ -532,13 +537,13 @@ function DownloadImagesAsync(urls, OnSuccess) {
 }
 
 
-function LoadMap(x, y, url, callback)
+function LoadMap(x, y, urls, callback)
 {
-    DownloadImagesAsync([url], function(images) {
+    DownloadImagesAsync(urls, function(images) {
         console.log("loaded " + x + ", " + y)
         if(!tiles[y])
             tiles[y] = [];
-        tiles[y][x] = imageToTile(images[0]);
+        tiles[y][x] = imagesToTile(images);
         if(callback) {
           callback();
         }
